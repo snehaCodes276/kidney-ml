@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # Define the model path (adjust the path if necessary)
-MODEL_PATH = os.path.join(os.path.dirname(_file_), 'models', 'kidney_model.tflite')
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'kidney_model.tflite')
 
 # Load the TFLite model
 interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
