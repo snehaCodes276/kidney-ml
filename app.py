@@ -4,7 +4,7 @@ import cv2
 import os
 from flask import Flask, request, jsonify
 
-app = Flask(_name_)
+app = Flask(__name__)
 
 # Define the model path (adjust the path if necessary)
 MODEL_PATH = os.path.join(os.path.dirname(_file_), 'models', 'kidney_model.tflite')
@@ -61,5 +61,5 @@ def predict_disease():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
