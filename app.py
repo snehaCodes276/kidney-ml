@@ -1,9 +1,8 @@
 import os
 import numpy as np
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
 import tensorflow as tf
 from PIL import Image
-import io
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -45,13 +44,8 @@ def predict(image):
     prediction = np.argmax(output, axis=1)
     return prediction[0]
 
-# Flask route for the home page
-@app.route('/')
-def index():
-    return render_template('index.html')
-
 # Flask route to handle image upload and prediction
-@app.route('/predict', methods=['POST'])
+@app.route('/predict_kidney_stone', methods=['POST'])
 def upload_and_predict():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
