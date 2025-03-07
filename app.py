@@ -7,59 +7,67 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # Define the model path (adjust the path if necessary)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'kidney_model.tflite')
+model_path = os.path.join(os.path.dirname(__file__), 'models', 'kidney_model.tflite')
 
-# Load the TFLite model
-interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+# Load the TFLite model from the models folder
+interpreter = Interpreter(model_path=model_path)
 interpreter.allocate_tensors()
 
-# Get input and output details
+# Get model input details
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# Define labels and suggestions
-labels = ["Normal", "Stone"]
-suggestions = {
-    "Normal": "Your kidney appears normal. Keep maintaining a healthy lifestyle.",
-    "Stone": "You may have kidney stones. It's recommended to consult a doctor for further diagnosis."
-}
+# Helper function to preprocess the image before passing it to the model
+def preprocess_image(image):
+    image = image.resize((150, 150))  # Resize the image to the model input size
+    image_array = np.array(image, dtype=np.float32)
+    image_array = np.expand_dims(image_array, axis=0)  # Add batch dimension
+    image_array = image_array / 255.0  # Normalize the image pixels
+    return image_array
 
-@app.route('/')
-def home():
-    return jsonify({"message": "Kidney Stone Detection API is Running!"})
+# Helper function to return suggestions based on the prediction
+def get_suggestion(prediction):
+    suggestions = {
+        "Stone": "It is suggested to consult a doctor for proper diagnosis and treatment.",
+        "Healthy": "Great! Keep maintaining a healthy lifestyle with balanced hydration and diet."
+    }
+    return suggestions.get(prediction, "No suggestion available.")
 
+# Route for image prediction
 @app.route('/predict_kidney_stone', methods=['POST'])
-def predict_disease():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
-    file = request.files['file']
+def predict_kidney_stone():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['image']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
     
     try:
-        # Read and preprocess the image
-        image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
-        image = cv2.resize(image, (224, 224)) / 255.0  # Resize and normalize
-        image = np.expand_dims(image, axis=0).astype(np.float32)  # Add batch dimension
+        image = Image.open(io.BytesIO(file.read()))
+        image_array = preprocess_image(image)
         
-        # Run inference
-        interpreter.set_tensor(input_details[0]['index'], image)
+        # Set the tensor for inference
+        interpreter.set_tensor(input_details[0]['index'], image_array)
         interpreter.invoke()
-        output_data = interpreter.get_tensor(output_details[0]['index'])
         
-        # Get prediction
-        predicted_class = np.argmax(output_data)
-        confidence = float(np.max(output_data))
-        prediction = labels[predicted_class]
-        suggestion = suggestions[prediction]
-
-        return jsonify({
-            "prediction": prediction,
-            "confidence": confidence,
-            "suggestion": suggestion
-        }), 200
-
+        # Get the model's output
+        output = interpreter.get_tensor(output_details[0]['index'])
+        prediction = np.argmax(output, axis=1)[0]
+        
+        # Map prediction to label
+        result = 'Stone' if prediction == 1 else 'Healthy'
+        
+        # Get the suggestion for the prediction
+        suggestion = get_suggestion(result)
+        
+        return jsonify({'prediction': result, 'suggestion': suggestion}), 200
+    
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True)
+
+#
