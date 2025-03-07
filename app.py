@@ -1,81 +1,67 @@
-import os
-import numpy as np
 from flask import Flask, request, jsonify
+import numpy as np
+import cv2
+import os
 import tensorflow as tf
-from PIL import Image
 
-# Initialize Flask app
 app = Flask(__name__)
 
-# Set model path and load your TFLite model
-MODEL_DIR = 'models/'
-MODEL_PATH = os.path.join(MODEL_DIR, 'kidney_model.tflite')
+# Load the TFLite model
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'kidney_model.tflite')
 interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
 interpreter.allocate_tensors()
 
-# Get model input and output details
+# Get input/output details
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# Helper function to preprocess the image and make predictions
-def preprocess_image(image):
-    # Resize image to the model's expected input size (150x150)
-    image = image.resize((150, 150))
-    image_array = np.array(image)
-    # Normalize and expand dimensions for the batch
-    image_array = image_array.astype(np.float32) / 255.0
-    image_array = np.expand_dims(image_array, axis=0)
-    return image_array
+# Labels (must match training order)
+labels = ["Normal", "Stone"]
 
-# Define prediction function
-def predict(image):
-    image_array = preprocess_image(image)
-    
-    # Set input tensor
-    interpreter.set_tensor(input_details[0]['index'], image_array)
-    
-    # Run inference
-    interpreter.invoke()
-    
-    # Get output tensor
-    output = interpreter.get_tensor(output_details[0]['index'])
-    
-    # Output prediction (Assuming output is categorical)
-    prediction = np.argmax(output, axis=1)
-    return prediction[0]
-
-# Flask route to handle image upload and prediction
-@app.route('/predict_kidney_stone', methods=['POST'])
-def upload_and_predict():
+@app.route('/predict', methods=['POST'])
+def predict():
     if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    
+        return jsonify({"error": "No image file provided"}), 400
+
     file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+    try:
+        # Read and preprocess the image
+        image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+        image = cv2.resize(image, (150, 150))  # Resize to match model input (150x150)
+        image = image / 255.0  # Normalize
+        image = np.expand_dims(image, axis=0).astype(np.float32)
 
-    if file:
-        # Read image from the file
-        img = Image.open(file.stream)
-        
-        # Make prediction
-        prediction = predict(img)
-        
-        # Provide a suggestion based on the prediction
-        if prediction == 0:
-            suggestion = "The image seems to represent a 'normal' condition. This is typically the case for healthy kidney images."
-        elif prediction == 1:
-            suggestion = "The image seems to represent a 'stone' condition. This may indicate the presence of kidney stones. It is advisable to consult a doctor for further diagnosis."
-        else:
-            suggestion = "Unable to determine the condition. Please ensure the image is clear and correctly labeled."
-        
-        # Return prediction and suggestion as a response
+        # Run inference
+        interpreter.set_tensor(input_details[0]['index'], image)
+        interpreter.invoke()
+        output = interpreter.get_tensor(output_details[0]['index'])[0]
+
+        # Get prediction and confidence
+        predicted_class = labels[np.argmax(output)]
+        confidence = float(np.max(output))
+
         return jsonify({
-            'prediction': prediction,
-            'suggestion': suggestion
-        })
+            "prediction": predicted_class,
+            "confidence": confidence,
+            "suggestion": get_suggestion(predicted_class)
+        }), 200
 
-# Run the Flask app
+    except Exception as e:
+        return jsonify({"error": f"Prediction failed: {str(e)[:-1]}"}), 500
+
+def get_suggestion(prediction):
+    if prediction == "Stone":
+        return (
+            "A kidney stone is detected. Please consult a urologist immediately. "
+            "Increase your water intake to help pass small stones naturally. "
+            "Avoid high-oxalate foods like spinach and nuts. "
+            "Pain relievers may help, but medical guidance is recommended."
+        )
+    else:
+        return (
+            "Your kidney appears healthy. Maintain a balanced diet, "
+            "stay hydrated, and get regular checkups for optimal health."
+        )
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
