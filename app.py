@@ -41,8 +41,8 @@ def predict(image):
     # Get output tensor
     output = interpreter.get_tensor(output_details[0]['index'])
     
-    # Output prediction
-    prediction = np.argmax(output, axis=1)  # For categorical prediction
+    # Output prediction (Assuming output is categorical)
+    prediction = np.argmax(output, axis=1)
     return prediction[0]
 
 # Flask route for the home page
@@ -70,10 +70,13 @@ def upload_and_predict():
         
         # Provide a suggestion based on the prediction
         if prediction == 0:
-            suggestion = "The image seems to represent a 'normal' condition."
+            suggestion = "The image seems to represent a 'normal' condition. This is typically the case for healthy kidney images."
+        elif prediction == 1:
+            suggestion = "The image seems to represent a 'stone' condition. This may indicate the presence of kidney stones. It is advisable to consult a doctor for further diagnosis."
         else:
-            suggestion = "The image seems to represent a 'stone' condition."
+            suggestion = "Unable to determine the condition. Please ensure the image is clear and correctly labeled."
         
+        # Return prediction and suggestion as a response
         return jsonify({
             'prediction': prediction,
             'suggestion': suggestion
